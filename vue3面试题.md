@@ -1,6 +1,6 @@
 # Vue 3 面试题（含隐藏答案 · 详细版）
 
-共 **20 题**，涵盖基础、响应式、Composition API、组件通信、Router、Pinia 与进阶特性。点击「查看答案」即可展开，每题都包含**原理 / 对比 / 代码示例 / 坑点 / 面试加分点**。
+共 **25 题**，涵盖基础、响应式、Composition API、组件通信、Router、Pinia、进阶特性与补充重点。点击「查看答案」即可展开，每题都包含**原理 / 对比 / 代码示例 / 坑点 / 面试加分点**。
 
 ---
 
@@ -2128,6 +2128,441 @@ const STATUS_MAP = Object.freeze({ 1: "激活", 2: "禁用" });
 - `onRenderTracked` / `onRenderTriggered` 调试不必要的 re-render
 
 **面试加分点**：能区分「Vue 3 编译期优化」（PatchFlag/Block Tree/静态提升）和「开发实践优化」（KeepAlive/虚拟滚动/markRaw），并能根据场景给出具体方案而非泛泛而谈。
+
+</details>
+
+---
+
+## 八、补充重点面试题
+
+### 21. Vue 3 的全局 API 有哪些变化？为什么用 createApp？
+
+<details>
+<summary>查看答案</summary>
+
+**核心变化：从全局 Vue 对象改为应用实例**
+
+```js
+// Vue 2
+import Vue from "vue";
+import VueRouter from "vue-router";
+import Vuex from "vuex";
+
+Vue.use(VueRouter);
+Vue.use(Vuex);
+Vue.component("MyComp", MyComp);
+Vue.directive("focus", focusDirective);
+Vue.filter("capitalize", capitalize);
+
+new Vue({
+  router,
+  store,
+  render: (h) => h(App),
+}).$mount("#app");
+```
+
+```js
+// Vue 3
+import { createApp } from "vue";
+import { createRouter } from "vue-router";
+import { createPinia } from "pinia";
+import App from "./App.vue";
+
+const app = createApp(App);
+
+app.use(createRouter(...));
+app.use(createPinia());
+app.component("MyComp", MyComp);
+app.directive("focus", focusDirective);
+app.config.globalProperties.$api = api;
+
+app.mount("#app");
+
+// 可创建多个独立应用
+const app2 = createApp(App2);
+app2.mount("#app2");
+```
+
+**为什么改成 createApp？**
+
+1. **避免全局污染**：Vue 2 的插件、组件、指令都挂在全局 Vue 上，多实例测试/微前端场景容易冲突
+2. **Tree-shaking 友好**：不再依赖 `Vue.xxx` 全局对象，API 可以按需导入
+3. **单元测试更友好**：每个测试用例可创建独立 app 实例
+4. **微前端支持**：多个 Vue 应用可共存于同一页面
+
+**常见全局 API 调整：**
+
+| Vue 2                    | Vue 3                            |
+| ------------------------ | -------------------------------- |
+| `Vue.component`          | `app.component`                  |
+| `Vue.directive`          | `app.directive`                  |
+| `Vue.use`                | `app.use`                        |
+| `Vue.mixin`              | `app.mixin`                      |
+| `Vue.filter`             | 移除                             |
+| `Vue.nextTick`           | `import { nextTick } from 'vue'` |
+| `Vue.set` / `Vue.delete` | 不再需要                         |
+| `Vue.observable`         | `reactive`                       |
+
+**面试加分点**：能说出 createApp 让每个应用拥有独立的配置、插件、组件注册空间；能解释 Vue 3 移除 filter 是鼓励用 computed 或 method 替代。
+
+</details>
+
+---
+
+### 22. Vue 3 的插槽有哪些？作用域插槽怎么用？
+
+<details>
+<summary>查看答案</summary>
+
+**插槽类型**
+
+**1）默认插槽**
+
+```vue
+<!-- 父 -->
+<Child>默认内容</Child>
+
+<!-- 子 -->
+<template>
+  <slot></slot>
+</template>
+```
+
+**2）具名插槽**
+
+```vue
+<!-- 父 -->
+<Child>
+  <template #header>头部</template>
+  <template #footer>底部</template>
+</Child>
+
+<!-- 子 -->
+<template>
+  <slot name="header"></slot>
+  <slot></slot>
+  <slot name="footer"></slot>
+</template>
+```
+
+**3）作用域插槽**
+
+子组件向父组件传递数据：
+
+```vue
+<!-- 子 -->
+<template>
+  <slot :user="user" :age="age"></slot>
+</template>
+
+<script setup>
+const user = ref({ name: "Tom" });
+const age = ref(20);
+</script>
+```
+
+```vue
+<!-- 父 -->
+<Child v-slot="{ user, age }">
+  {{ user.name }} - {{ age }}
+</Child>
+```
+
+**`<script setup>` 中定义插槽**
+
+```vue
+<script setup>
+const slots = defineSlots(); // Vue 3.3+
+</script>
+```
+
+**与 Vue 2 的差异**
+
+|              | Vue 2                 | Vue 3                |
+| ------------ | --------------------- | -------------------- |
+| 默认插槽     | `slot` / `slot-scope` | `v-slot` / `#`       |
+| 作用域插槽   | `slot-scope`          | `v-slot="{ data }"`  |
+| 动态插槽名   | `#[dynamicName]`      | 支持                 |
+| 插槽内容编译 | 编译为函数            | 编译为函数，性能更好 |
+
+**常见坑点**
+
+```vue
+<!-- ❌ 解构时命名冲突 -->
+<Child v-slot="{ user }">
+  <span v-for="user in list" :key="user.id">{{ user.name }}</span>
+</Child>
+```
+
+**面试加分点**：能解释作用域插槽的本质是「子组件把数据作为 props 传给父组件的渲染函数」；能区分 `v-slot` 在组件上和 `<template>` 上的用法。
+
+</details>
+
+---
+
+### 23. Vue 3 中如何封装自定义指令？
+
+<details>
+<summary>查看答案</summary>
+
+**自定义指令钩子**
+
+Vue 3 的指令钩子与组件生命周期对齐：
+
+```js
+const myDirective = {
+  created(el, binding, vnode, prevVnode) {}, // 绑定前
+  beforeMount(el, binding, vnode, prevVnode) {}, // 挂载前
+  mounted(el, binding, vnode, prevVnode) {}, // 挂载后
+  beforeUpdate(el, binding, vnode, prevVnode) {}, // 更新前
+  updated(el, binding, vnode, prevVnode) {}, // 更新后
+  beforeUnmount(el, binding, vnode, prevVnode) {}, // 卸载前
+  unmounted(el, binding, vnode, prevVnode) {}, // 卸载后
+};
+```
+
+**示例：v-focus**
+
+```js
+// directives/focus.js
+export const vFocus = {
+  mounted(el) {
+    el.focus();
+  },
+};
+```
+
+```vue
+<script setup>
+import { vFocus } from "./directives/focus";
+</script>
+
+<template>
+  <input v-focus />
+</template>
+```
+
+**示例：v-permission（权限控制）**
+
+```js
+export const vPermission = {
+  mounted(el, binding) {
+    const required = binding.value; // 'admin'
+    const userRole = useUserStore().role;
+    if (!userRole.includes(required)) {
+      el.remove(); // 无权限移除元素
+    }
+  },
+};
+```
+
+**钩子参数**
+
+| 参数      | 说明                                    |
+| --------- | --------------------------------------- |
+| el        | 指令绑定的 DOM                          |
+| binding   | 包含 value、arg、modifiers、instance 等 |
+| vnode     | 当前虚拟节点                            |
+| prevVnode | 上一个虚拟节点                          |
+
+```js
+binding.value; // 指令值
+binding.arg; // 参数 v-my:arg
+binding.modifiers; // 修饰符 v-my.mod
+binding.instance; // 组件实例
+```
+
+**全局注册**
+
+```js
+app.directive("focus", {
+  mounted(el) {
+    el.focus();
+  },
+});
+```
+
+**面试加分点**：能说出 Vue 3 指令钩子从 `bind/inserted/update/unbind` 改为与组件生命周期一致；能解释 `binding.value` 和 `binding.arg` 的区别。
+
+</details>
+
+---
+
+### 24. `<Suspense>` 和 `defineAsyncComponent` 怎么用？
+
+<details>
+<summary>查看答案</summary>
+
+**`<Suspense>` 作用**
+
+`<Suspense>` 是 Vue 3 新增内置组件，用于在异步依赖（如异步组件、异步 setup）解析期间显示 fallback 内容。
+
+```vue
+<template>
+  <Suspense>
+    <template #default>
+      <AsyncComponent />
+    </template>
+    <template #fallback>
+      <Loading />
+    </template>
+  </Suspense>
+</template>
+```
+
+**`defineAsyncComponent`**
+
+Vue 3 推荐用 `defineAsyncComponent` 定义异步组件：
+
+```js
+import { defineAsyncComponent } from "vue";
+
+const AsyncComp = defineAsyncComponent(() => import("./AsyncComp.vue"));
+```
+
+**带 loading/error 配置**
+
+```js
+const AsyncComp = defineAsyncComponent({
+  loader: () => import("./AsyncComp.vue"),
+  loadingComponent: Loading,
+  errorComponent: Error,
+  delay: 200, // 延迟显示 loading，避免闪烁
+  timeout: 3000, // 超时时间
+  onError(error, retry, fail, attempts) {
+    if (attempts <= 3) retry();
+    else fail();
+  },
+});
+```
+
+**异步 setup 与 Suspense**
+
+```vue
+<script setup>
+const data = await fetch("/api").then((r) => r.json());
+</script>
+```
+
+顶层 `await` 的 `<script setup>` 会隐式触发 Suspense。
+
+**与路由懒加载结合**
+
+```js
+const routes = [
+  {
+    path: "/about",
+    component: () => import("@/views/About.vue"),
+  },
+];
+```
+
+```vue
+<router-view v-slot="{ Component }">
+  <Suspense>
+    <template #default>
+      <component :is="Component" />
+    </template>
+    <template #fallback>
+      <Loading />
+    </template>
+  </Suspense>
+</router-view>
+```
+
+**面试加分点**：能说出 `<Suspense>` 目前只支持一个默认插槽和一个 fallback 插槽；能解释异步组件配合路由懒加载实现代码分割。
+
+</details>
+
+---
+
+### 25. Vue 3 中的 `<KeepAlive>` 是什么？怎么控制缓存？
+
+<details>
+<summary>查看答案</summary>
+
+**作用**
+
+`<KeepAlive>` 是 Vue 内置组件，用于缓存动态组件的实例，避免组件切换时反复创建/销毁，保留组件状态。
+
+```vue
+<template>
+  <KeepAlive>
+    <component :is="currentTab" />
+  </KeepAlive>
+</template>
+```
+
+**控制缓存**
+
+**1）`include` / `exclude`**
+
+```vue
+<KeepAlive include="Home,User">
+  <component :is="currentTab" />
+</KeepAlive>
+
+<!-- 也可以用数组 -->
+<KeepAlive :include="['Home', 'User']">
+  <component :is="currentTab" />
+</KeepAlive>
+
+<KeepAlive exclude="Cache">
+  <component :is="currentTab" />
+</KeepAlive>
+```
+
+**2）`max` 限制缓存数量**
+
+```vue
+<KeepAlive :max="10">
+  <component :is="currentTab" />
+</KeepAlive>
+```
+
+LRU 策略：超出 max 时，最久未访问的组件会被销毁。
+
+**3）配合路由缓存**
+
+```vue
+<router-view v-slot="{ Component }">
+  <KeepAlive>
+    <component :is="Component" />
+  </KeepAlive>
+</router-view>
+```
+
+**生命周期钩子**
+
+被 KeepAlive 缓存的组件会触发 `onActivated` 和 `onDeactivated`：
+
+```vue
+<script setup>
+import { onActivated, onDeactivated } from "vue";
+
+onActivated(() => {
+  console.log("组件被激活");
+});
+
+onDeactivated(() => {
+  console.log("组件被缓存");
+});
+</script>
+```
+
+**注意点**
+
+- KeepAlive 要求子组件有 `name` 选项（或文件名，在 script setup 中用 defineOptions）
+- 缓存的是组件实例，不是 DOM
+- 异步组件首次加载后也会被缓存
+
+```vue
+<script setup>
+defineOptions({ name: "Home" });
+</script>
+```
+
+**面试加分点**：能说出 KeepAlive 适合 tab 切换、表单填写一半切换等场景；能解释 `include`/`exclude` 匹配组件的 `name` 选项。
 
 </details>
 
