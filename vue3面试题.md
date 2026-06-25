@@ -1476,11 +1476,11 @@ createApp(App).use(router).mount("#app");
 
 **3）`mode` 选项移除，改用 history 工厂函数**
 
-| Vue Router 3       | Vue Router 4             |
-| ------------------ | ------------------------ | ---------- |
-| `mode: 'history'`  | `createWebHistory()`     |
-| `mode: 'hash'`     | `createWebHashHistory()` |
-| `mode: 'abstract'` | `createMemoryHistory()`  | （SSR 用） |
+| Vue Router 3       | Vue Router 4                      |
+| ------------------ | --------------------------------- |
+| `mode: 'history'`  | `createWebHistory()`              |
+| `mode: 'hash'`     | `createWebHashHistory()`          |
+| `mode: 'abstract'` | `createMemoryHistory()`（SSR 用） |
 
 **4）`addRoutes` 移除，使用 `addRoute`**
 
