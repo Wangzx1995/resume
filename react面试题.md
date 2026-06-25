@@ -1,12 +1,290 @@
 # React 面试题（含隐藏答案 · 详细版）
 
-共 **20 题**，涵盖基础、Hooks、组件通信、渲染机制、Router、状态管理与进阶特性。点击「查看答案」即可展开，每题都包含**原理 / 对比 / 代码示例 / 坑点 / 面试加分点**。
+共 **24 题**，涵盖基础、Hooks、组件通信、渲染机制、Router、状态管理与进阶特性。点击「查看答案」即可展开，每题都包含**原理 / 对比 / 代码示例 / 坑点 / 面试加分点**。
+
+---
+
+## 零、React 基础入门
+
+### 1. JSX 是什么？它和 JavaScript 有什么关系？
+
+<details>
+<summary>查看答案</summary>
+
+**JSX 的本质**
+
+JSX 是 JavaScript 的语法扩展（XML-like syntax extension），允许在 JS 中书写类似 HTML 的结构。它会被 Babel 等编译器转换为 `React.createElement(type, props, ...children)` 调用。
+
+```jsx
+// JSX
+const element = <h1 className="title">Hello</h1>;
+
+// 编译后
+const element = React.createElement("h1", { className: "title" }, "Hello");
+```
+
+**JSX 规则**
+
+- 必须有一个根元素（或用 `<></>` Fragment）
+- 标签必须正确闭合
+- 自定义组件必须大写开头
+- `{}` 内可以嵌入任意 JavaScript 表达式
+- `class` 要写成 `className`，`for` 要写成 `htmlFor`
+
+**为什么需要 JSX？**
+
+- 声明式描述 UI
+- 与 JavaScript 无缝集成
+- 编译时检查，减少运行时错误
+
+**面试加分点**：能说出 JSX 只是语法糖，最终都会编译成 JS 对象；理解 JSX 表达式 `{}` 只能放表达式不能放语句。
+
+</details>
+
+---
+
+### 2. props 和 state 有什么区别？
+
+<details>
+<summary>查看答案</summary>
+
+**核心区别表：**
+
+| 维度             | props             | state                |
+| ---------------- | ----------------- | -------------------- |
+| 来源             | 父组件传入        | 组件内部管理         |
+| 可修改性         | 只读，不可修改    | 可通过 setState 修改 |
+| 作用             | 组件间通信        | 组件内部数据         |
+| 变化是否触发渲染 | 是                | 是                   |
+| 使用场景         | 接收外部数据/回调 | 维护组件自身状态     |
+
+**props 示例：**
+
+```jsx
+function Welcome({ name, age }) {
+  return <h1>Hello, {name}</h1>;
+}
+
+<Welcome name="Tom" age={20} />;
+```
+
+**state 示例：**
+
+```js
+const [count, setCount] = useState(0);
+```
+
+**典型坑点：**
+
+```js
+// ❌ 直接修改 props
+function Welcome(props) {
+  props.name = "Jerry"; // 错误！props 不可变
+}
+
+// ✅ 如果需要修改，应该提升到父组件的 state
+```
+
+**面试加分点**：能解释 props 是父组件的 state 或常量向下传递；强调 React 数据流是单向的，子组件通过回调通知父组件修改 state。
+
+</details>
+
+---
+
+### 3. 什么是受控组件和非受控组件？
+
+<details>
+<summary>查看答案</summary>
+
+**受控组件：**
+
+表单元素的值由 React 的 state 控制，每个输入变化都通过 onChange 更新 state。
+
+```jsx
+function ControlledInput() {
+  const [value, setValue] = useState("");
+  return <input value={value} onChange={(e) => setValue(e.target.value)} />;
+}
+```
+
+**非受控组件：**
+
+表单元素的值由 DOM 自身管理，通过 ref 获取值。
+
+```jsx
+function UncontrolledInput() {
+  const inputRef = useRef(null);
+  const handleSubmit = () => {
+    console.log(inputRef.current.value);
+  };
+  return (
+    <>
+      <input ref={inputRef} defaultValue="hello" />
+      <button onClick={handleSubmit}>提交</button>
+    </>
+  );
+}
+```
+
+**核心区别表：**
+
+| 维度       | 受控组件    | 非受控组件                       |
+| ---------- | ----------- | -------------------------------- |
+| 数据来源   | React state | DOM                              |
+| 实时获取值 | 容易        | 需要 ref                         |
+| 表单验证   | 实时验证    | 提交时验证                       |
+| 适用场景   | 大多数表单  | 简单表单、文件上传、第三方库集成 |
+| 代码量     | 较多        | 较少                             |
+
+**选择建议：**
+
+- 大多数情况优先使用受控组件
+- 文件输入 `<input type="file">` 必须是非受控的
+- 需要与第三方非 React 库集成时考虑非受控
+
+**面试加分点**：能说出受控组件让 React 拥有数据的单一真相源；能解释为什么文件输入不能用受控组件（出于安全考虑，浏览器不允许 JS 设置 file input 的值）。
+
+</details>
+
+---
+
+### 4. React 的事件机制是什么？什么是合成事件？
+
+<details>
+<summary>查看答案</summary>
+
+**合成事件（SyntheticEvent）：**
+
+React 没有直接使用浏览器原生事件，而是封装了一套跨浏览器兼容的事件系统。所有事件处理器接收的都是 React 的合成事件对象。
+
+```jsx
+function Button() {
+  const handleClick = (e) => {
+    e.preventDefault(); // 合成事件方法
+    console.log(e.type); // "click"
+  };
+  return <button onClick={handleClick}>Click</button>;
+}
+```
+
+**事件委托：**
+
+React 17 之前，事件委托到 document；React 17 及以后，事件委托到 root 容器。
+
+```
+React 16: document.addEventListener("click", ...)
+React 17+: rootContainer.addEventListener("click", ...)
+```
+
+**合成事件 vs 原生事件：**
+
+| 特性     | 合成事件                                      | 原生事件         |
+| -------- | --------------------------------------------- | ---------------- |
+| 兼容性   | 跨浏览器统一                                  | 各浏览器有差异   |
+| 性能     | 事件委托，减少监听器                          | 每个节点单独绑定 |
+| 访问方式 | onClick/onChange 等                           | addEventListener |
+| 事件池   | React 17 之前有事件池，异步访问需 e.persist() | 无               |
+
+**典型坑点：**
+
+```js
+// ❌ React 17 之前，异步访问合成事件对象可能拿到 null
+handleClick = (e) => {
+  setTimeout(() => {
+    console.log(e.target); // React 17 之前可能为 null
+  }, 0);
+};
+
+// ✅ 使用 e.persist() 或升级到 React 17+
+```
+
+**面试加分点**：能解释事件委托的好处（减少内存占用、动态子元素也能响应）；能说出 React 17 事件委托位置的变更及其对事件冒泡的影响。
+
+</details>
+
+---
+
+### 5. React 中条件渲染和列表渲染有哪些方式？
+
+<details>
+<summary>查看答案</summary>
+
+**条件渲染方式：**
+
+**1）if / else**
+
+```jsx
+function Greeting({ isLogin }) {
+  if (isLogin) return <UserInfo />;
+  return <LoginButton />;
+}
+```
+
+**2）三元运算符**
+
+```jsx
+return <div>{isLogin ? <UserInfo /> : <LoginButton />}</div>;
+```
+
+**3）逻辑与运算符 &&**
+
+```jsx
+return <div>{hasMessage && <Message />}</div>;
+```
+
+**4）三元 + 括号分组**
+
+```jsx
+return <div>{isLogin ? <UserInfo /> : <LoginButton />}</div>;
+```
+
+**列表渲染：**
+
+```jsx
+function List({ items }) {
+  return (
+    <ul>
+      {items.map((item) => (
+        <li key={item.id}>{item.name}</li>
+      ))}
+    </ul>
+  );
+}
+```
+
+**条件渲染坑点：**
+
+```jsx
+// ❌ 用 && 时，如果 count 为 0 会渲染出 0
+<div>{count && <span>有消息</span>}</div>
+
+// ✅ 转成布尔值或明确判断
+<div>{count > 0 && <span>有消息</span>}</div>
+```
+
+**列表渲染坑点：**
+
+```jsx
+// ❌ 用 index 做 key（列表会变化时）
+{
+  list.map((item, index) => <li key={index}>{item.name}</li>);
+}
+
+// ✅ 用稳定唯一 ID
+{
+  list.map((item) => <li key={item.id}>{item.name}</li>);
+}
+```
+
+**面试加分点**：能解释条件渲染本质是返回不同的 JSX；理解 `&&` 短路求值在 React 中可能渲染出 0、"" 等 falsy 值；强调列表必须加 key。
+
+</details>
 
 ---
 
 ## 一、基础与核心概念
 
-### 1. React 18 相比之前版本有哪些主要变化？
+### 6. React 18 相比之前版本有哪些主要变化？
 
 <details>
 <summary>查看答案</summary>
@@ -68,7 +346,7 @@ root.render(<App />);
 
 ---
 
-### 2. 类组件和函数组件有什么区别？为什么现在推荐函数组件？
+### 7. 类组件和函数组件有什么区别？为什么现在推荐函数组件？
 
 <details>
 <summary>查看答案</summary>
@@ -119,7 +397,7 @@ class Demo extends React.Component {
 
 ---
 
-### 3. `useState` 和 `useReducer` 有什么区别？分别适合什么场景？
+### 8. `useState` 和 `useReducer` 有什么区别？分别适合什么场景？
 
 <details>
 <summary>查看答案</summary>
@@ -186,7 +464,7 @@ setUser((prev) => ({ ...prev, name: "tom" }));
 
 ---
 
-### 4. `useEffect`、`useLayoutEffect` 和 `useInsertionEffect` 的区别？
+### 9. `useEffect`、`useLayoutEffect` 和 `useInsertionEffect` 的区别？
 
 <details>
 <summary>查看答案</summary>
@@ -250,7 +528,7 @@ useInsertionEffect(() => {
 
 ---
 
-### 5. React 的生命周期如何在函数组件中对应？
+### 10. React 的生命周期如何在函数组件中对应？
 
 <details>
 <summary>查看答案</summary>
@@ -308,89 +586,115 @@ useEffect(() => {
 
 ---
 
-## 二、Hooks 深度理解
+## 二、Hooks 基础
 
-### 6. 为什么 Hooks 必须在顶层调用，不能放在 if/for 里？
+### 11. 什么是 Hooks？它解决了什么问题？
 
 <details>
 <summary>查看答案</summary>
 
-**根本原因：Hooks 依赖调用顺序**
+**Hooks 是什么？**
 
-React 通过**链表**存储每个组件的 Hooks 状态。每次渲染时，React 按顺序遍历这个链表来对应每个 Hook。
+Hooks 是 React 16.8 引入的新特性，它让你在**函数组件中使用 state 和其他 React 特性**，而不需要写类组件。
 
-```js
-// React 内部简化逻辑
-function renderComponent() {
-  const hook1 = hooksList.next(); // useState
-  const hook2 = hooksList.next(); // useEffect
-  const hook3 = hooksList.next(); // useState
-}
-```
+```jsx
+import { useState } from "react";
 
-**如果放在 if 中：**
-
-```js
-function Demo({ flag }) {
-  if (flag) {
-    const [state, setState] = useState(0); // ❌ 条件调用
-  }
+function Counter() {
   const [count, setCount] = useState(0);
+
+  return <button onClick={() => setCount(count + 1)}>点击了 {count} 次</button>;
 }
 ```
 
-- `flag` 变化时，Hook 的调用顺序会变化
-- 第一次渲染可能是 `[useState, useState]`，第二次变成 `[useState]`
-- React 无法正确对应状态，导致混乱
+**它解决了什么问题？**
 
-**如果放在 for 中：**
+1. **类组件的痛点**
+   - `this` 指向难理解
+   - 生命周期函数逻辑分散
+   - 状态逻辑复用困难（HOC 嵌套地狱）
 
-```js
-function Demo({ items }) {
-  for (let i = 0; i < items.length; i++) {
-    const [state, setState] = useState(null); // ❌
-  }
-}
-```
+2. **函数组件无法使用状态**
+   - React 16.8 之前，函数组件只能接收 props、返回 JSX
+   - Hooks 让函数组件拥有完整能力
 
-- 循环次数变化会导致 Hook 数量变化，同样破坏顺序
+3. **逻辑复用更简单**
+   - 通过自定义 Hook 复用状态逻辑
+   - 避免 HOC / render props 的嵌套
 
-**正确做法：**
+**常用 Hooks 概览：**
 
-```js
-function Demo({ flag }) {
-  const [state, setState] = useState(0);
-  const [count, setCount] = useState(flag ? 100 : 0); // ✅ 在 Hook 内部处理条件
-}
-```
+| Hook          | 作用                  |
+| ------------- | --------------------- |
+| `useState`    | 定义状态              |
+| `useEffect`   | 处理副作用            |
+| `useContext`  | 读取 Context          |
+| `useRef`      | 获取 DOM / 保存可变值 |
+| `useMemo`     | 缓存计算结果          |
+| `useCallback` | 缓存函数引用          |
+| `useReducer`  | 复杂状态管理          |
 
-**面试加分点**：能说出 React 内部用数组/链表实现 Hooks，通过索引匹配； eslint-plugin-react-hooks 的 `rules-of-hooks` 规则就是防止这个问题。
+**面试加分点**：能说出 Hooks 让函数组件从「无状态」变成「有状态」；能对比类组件和函数组件在代码简洁性上的差异。
 
 </details>
 
 ---
 
-### 7. `useMemo` 和 `useCallback` 有什么区别？什么时候用？
+### 12. React 常用 Hooks 有哪些？各自的作用是什么？
 
 <details>
 <summary>查看答案</summary>
 
-**核心区别：**
-
-| Hook          | 缓存对象   | 适用场景            |
-| ------------- | ---------- | ------------------- |
-| `useMemo`     | 任意计算值 | 昂贵计算结果        |
-| `useCallback` | 函数引用   | 子组件 props 稳定性 |
-
-**useMemo 示例：**
+**1）useState —— 让函数组件有状态**
 
 ```js
-const sortedList = useMemo(() => {
-  return [...list].sort((a, b) => a.score - b.score);
-}, [list]);
+const [count, setCount] = useState(0);
 ```
 
-**useCallback 示例：**
+用于定义组件内部状态，状态变化会触发重新渲染。
+
+**2）useEffect —— 处理副作用**
+
+```js
+useEffect(() => {
+  console.log("组件挂载或 count 变化");
+  return () => console.log("清理函数");
+}, [count]);
+```
+
+用于数据请求、订阅、DOM 操作等副作用。返回的清理函数在组件卸载或依赖变化前执行。
+
+**3）useContext —— 跨组件共享数据**
+
+```js
+const theme = useContext(ThemeContext);
+```
+
+用于读取 React Context，避免层层传递 props。
+
+**4）useRef —— 获取 DOM / 保存不变值**
+
+```js
+const inputRef = useRef(null);
+
+useEffect(() => {
+  inputRef.current.focus();
+}, []);
+```
+
+返回一个可变对象，修改 `.current` 不会触发重新渲染。
+
+**5）useMemo —— 缓存计算结果**
+
+```js
+const expensiveValue = useMemo(() => {
+  return computeHeavyTask(data);
+}, [data]);
+```
+
+用于缓存复杂计算，避免每次渲染重新计算。
+
+**6）useCallback —— 缓存函数**
 
 ```js
 const handleClick = useCallback(() => {
@@ -398,189 +702,92 @@ const handleClick = useCallback(() => {
 }, [id]);
 ```
 
-**为什么需要 useCallback？**
+用于缓存函数引用，通常配合 `React.memo` 优化子组件渲染。
+
+**7）useReducer —— 复杂状态管理**
 
 ```js
-function Parent() {
-  const [count, setCount] = useState(0);
-  const handleClick = () => console.log("click"); // 每次渲染都是新函数
-
-  return <Child onClick={handleClick} />; // Child 的 props 每次都变
-}
-
-const Child = React.memo(({ onClick }) => {
-  return <button onClick={onClick}>click</button>;
-});
+const [state, dispatch] = useReducer(reducer, initialState);
 ```
 
-- 父组件重新渲染时，`handleClick` 是新函数
-- 即使 `Child` 用了 `React.memo`，也会因 props 变化而重新渲染
-- 用 `useCallback` 保持函数引用稳定
+适合多个状态相互关联、逻辑复杂的场景，类似 Redux。
 
-**不要滥用：**
+**常用 Hooks 对比表：**
 
-```js
-// ❌ 简单计算没必要 useMemo
-const double = useMemo(() => count * 2, [count]);
+| Hook        | 用途         | 是否触发渲染         |
+| ----------- | ------------ | -------------------- |
+| useState    | 管理状态     | 是                   |
+| useEffect   | 副作用       | 否（依赖变化时执行） |
+| useContext  | 读取上下文   | 否                   |
+| useRef      | DOM / 可变值 | 否                   |
+| useMemo     | 缓存值       | 否                   |
+| useCallback | 缓存函数     | 否                   |
+| useReducer  | 复杂状态     | 是                   |
 
-// ✅ 直接写
-const double = count * 2;
-
-// ❌ 传给普通 DOM 没必要 useCallback
-const handleClick = useCallback(() => setCount((c) => c + 1), []);
-<button onClick={handleClick}>+</button>;
-```
-
-**使用建议：**
-
-| 场景                                  | 推荐          |
-| ------------------------------------- | ------------- |
-| 复杂计算 / 大数据处理                 | `useMemo`     |
-| 函数作为 props 传给 React.memo 子组件 | `useCallback` |
-| 函数作为 useEffect 依赖               | `useCallback` |
-| 简单计算 / 普通 DOM 事件              | 不需要        |
-
-**坑点：**
-
-- `useMemo` 返回的数组/对象如果内部元素不变但数组是新数组，仍会触发子组件更新
-- `useCallback` 依赖没写全会导致闭包陷阱
-
-**面试加分点**：能说出 `useCallback(fn, deps)` 等价于 `useMemo(() => fn, deps)`；强调不要过度优化，先测量再优化。
+**面试加分点**：能按使用频率分类记忆；能说出 `useState` 最常用，`useEffect` 次之，`useMemo` / `useCallback` 用于性能优化。
 
 </details>
 
 ---
 
-### 8. 什么是闭包陷阱（Stale Closure）？如何解决？
+### 13. 使用 Hooks 有哪些基本规则？
 
 <details>
 <summary>查看答案</summary>
 
-**问题现象：**
+**规则 1：只在最顶层调用 Hook**
 
-函数组件每次渲染都有独立的 props 和 state。Effect 或回调中如果捕获了旧的 state，就会出现「点击时打印的还是旧值」。
+不要在 `if`、`for`、嵌套函数中调用 Hook，确保每次渲染时 Hook 的调用顺序一致。
 
-```js
-function Demo() {
-  const [count, setCount] = useState(0);
+```jsx
+// ❌ 错误
+function Demo({ flag }) {
+  if (flag) {
+    const [state, setState] = useState(0);
+  }
+}
 
-  useEffect(() => {
-    const timer = setInterval(() => {
-      console.log(count); // 永远打印 0
-      setCount(count + 1); // 永远变成 1
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []); // 空依赖，count 永远是初始值
+// ✅ 正确
+function Demo({ flag }) {
+  const [state, setState] = useState(flag ? 0 : 1);
 }
 ```
 
-**解决方案：**
+**规则 2：只在 React 函数中调用 Hook**
 
-**方案 1：使用函数式更新**
+- 在函数组件中调用
+- 在自定义 Hook 中调用
 
-```js
-setCount((c) => c + 1); // ✅ 不依赖外部 count
+不要在普通 JavaScript 函数中调用。
+
+```jsx
+// ✅ 正确
+function useMyHook() {
+  const [value, setValue] = useState(0);
+  return value;
+}
+
+// ❌ 错误
+function normalFunction() {
+  const [value] = useState(0); // 普通函数不能调用 Hook
+}
 ```
 
-**方案 2：使用 ref**
+**规则 3：自定义 Hook 必须以 use 开头**
 
-```js
-const countRef = useRef(count);
-countRef.current = count;
+```jsx
+// ✅ 正确
+function useWindowWidth() { ... }
 
-useEffect(() => {
-  const timer = setInterval(() => {
-    console.log(countRef.current);
-  }, 1000);
-  return () => clearInterval(timer);
-}, []);
+// ❌ 错误，ESLint 不会按 Hook 规则检查
+function getWindowWidth() { ... }
 ```
 
-**方案 3：正确填写依赖**
+**为什么需要这些规则？**
 
-```js
-useEffect(() => {
-  // ...
-}, [count]); // ✅ 依赖变化时重新创建 effect
-```
+React 通过 Hook 的调用顺序来对应每个 Hook 的状态。如果顺序变化，React 无法正确匹配状态。
 
-**方案 4：使用 useReducer**
-
-```js
-const [count, dispatch] = useReducer((c) => c + 1, 0);
-```
-
-**常见场景：**
-
-- setInterval / setTimeout 中访问 state
-- 异步回调（如 fetch 后的操作）
-- useCallback 依赖缺失
-
-**面试加分点**：能解释「函数组件每次渲染都是新函数，闭包捕获的是那次渲染的快照」；推荐使用函数式更新和 ref 两种方式组合解决。
-
-</details>
-
----
-
-### 9. `useRef` 有哪些使用场景？和 `createRef` 有什么区别？
-
-<details>
-<summary>查看答案</summary>
-
-**useRef 核心作用：**
-
-返回一个可变的 ref 对象，`.current` 属性可以持久化保存值，且修改不会触发重新渲染。
-
-**1）访问 DOM**
-
-```js
-const inputRef = useRef(null);
-useEffect(() => {
-  inputRef.current.focus();
-}, []);
-
-return <input ref={inputRef} />;
-```
-
-**2）保存上一次的值**
-
-```js
-const prevCountRef = useRef();
-useEffect(() => {
-  prevCountRef.current = count;
-});
-const prevCount = prevCountRef.current;
-```
-
-**3）保存定时器 ID、订阅实例等**
-
-```js
-const timerRef = useRef(null);
-const start = () => {
-  timerRef.current = setInterval(() => {}, 1000);
-};
-const stop = () => clearInterval(timerRef.current);
-```
-
-**4）保存任意可变值（不触发渲染）**
-
-```js
-const clickCountRef = useRef(0);
-const handleClick = () => {
-  clickCountRef.current++;
-};
-```
-
-**useRef vs createRef：**
-
-| 维度     | `useRef`               | `createRef`        |
-| -------- | ---------------------- | ------------------ |
-| 使用位置 | 函数组件               | 类组件             |
-| 持久性   | 组件整个生命周期不变   | 每次渲染创建新对象 |
-| 触发渲染 | 不触发                 | 不触发             |
-| 初始化   | `useRef(initialValue)` | `createRef()`      |
-
-**面试加分点**：能说出 `useRef` 就是一个「不会触发重新渲染的 state」；类组件用 `createRef`，函数组件用 `useRef`。
+**面试加分点**：能解释 Hooks 依赖调用顺序；知道 ESLint 的 `react-hooks/rules-of-hooks` 和 `react-hooks/exhaustive-deps` 规则分别检查调用位置和依赖完整性。
 
 </details>
 
@@ -588,7 +795,7 @@ const handleClick = () => {
 
 ## 三、组件通信与状态提升
 
-### 10. React 中有哪些组件通信方式？
+### 14. React 中有哪些组件通信方式？
 
 <details>
 <summary>查看答案</summary>
@@ -674,7 +881,7 @@ emitter.emit("foo", data);
 
 ---
 
-### 11. Context 有什么性能问题？如何优化？
+### 15. Context 有什么性能问题？如何优化？
 
 <details>
 <summary>查看答案</summary>
@@ -739,7 +946,7 @@ const user = useContext(UserContext);
 
 ---
 
-### 12. `React.memo`、`useMemo` 和 `PureComponent` 有什么区别？
+### 16. `React.memo`、`useMemo` 和 `PureComponent` 有什么区别？
 
 <details>
 <summary>查看答案</summary>
@@ -804,7 +1011,7 @@ setItems([...items, newItem]);
 
 ## 四、渲染机制与性能
 
-### 13. 解释 React 的 Diff 算法和 Key 的作用。
+### 17. 解释 React 的 Diff 算法和 Key 的作用。
 
 <details>
 <summary>查看答案</summary>
@@ -873,7 +1080,7 @@ React 不会跨层级移动节点，只在同一层级内对比。
 
 ---
 
-### 14. 什么是虚拟 DOM？React 为什么要用它？
+### 18. 什么是虚拟 DOM？React 为什么要用它？
 
 <details>
 <summary>查看答案</summary>
@@ -926,7 +1133,7 @@ const element = React.createElement("div", { className: "app" },
 
 ---
 
-### 15. React 18 的并发特性 `startTransition` 和 `useDeferredValue` 怎么用？
+### 19. React 18 的并发特性 `startTransition` 和 `useDeferredValue` 怎么用？
 
 <details>
 <summary>查看答案</summary>
@@ -1000,7 +1207,7 @@ return (
 
 ## 五、React Router
 
-### 16. React Router v6 相比 v5 有哪些重要变化？
+### 20. React Router v6 相比 v5 有哪些重要变化？
 
 <details>
 <summary>查看答案</summary>
@@ -1080,7 +1287,7 @@ const [searchParams, setSearchParams] = useSearchParams();
 
 ---
 
-### 17. 路由懒加载如何实现？
+### 21. 路由懒加载如何实现？
 
 <details>
 <summary>查看答案</summary>
@@ -1133,7 +1340,7 @@ const About = lazy(() => import("./pages/About"));
 
 ## 六、状态管理
 
-### 18. Redux 和 Zustand 有什么区别？各自适合什么场景？
+### 22. Redux 和 Zustand 有什么区别？各自适合什么场景？
 
 <details>
 <summary>查看答案</summary>
@@ -1198,7 +1405,7 @@ const count = useStore((state) => state.count);
 
 ## 七、进阶与工程化
 
-### 19. 什么是高阶组件（HOC）和 Render Props？现在还用吗？
+### 23. 什么是高阶组件（HOC）和 Render Props？现在还用吗？
 
 <details>
 <summary>查看答案</summary>
@@ -1260,7 +1467,7 @@ function MouseTracker({ render }) {
 
 ---
 
-### 20. React 项目有哪些常见性能优化手段？
+### 24. React 项目有哪些常见性能优化手段？
 
 <details>
 <summary>查看答案</summary>
