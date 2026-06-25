@@ -1,6 +1,6 @@
 # JavaScript 面试题（含隐藏答案 · 详细版）
 
-共 **20 题**，涵盖基础类型、作用域与闭包、原型继承、异步编程、事件循环、ES6+ 与工程化。点击「查看答案」即可展开，每题都包含**原理 / 对比 / 代码示例 / 坑点 / 面试加分点**。
+共 **30 题**，涵盖基础类型、作用域与闭包、原型继承、异步编程、事件循环、ES6+ 与工程化、高频手写与浏览器原理。点击「查看答案」即可展开，每题都包含**原理 / 对比 / 代码示例 / 坑点 / 面试加分点**。
 
 ---
 
@@ -1217,6 +1217,549 @@ const module = await import("./heavy.js");
 - 使用 Map/Set 替代数组查找
 
 **面试加分点**：能强调「先测量再优化」，使用 Chrome DevTools Performance 面板定位瓶颈；能区分性能优化的不同层面（网络、渲染、脚本执行）。
+
+</details>
+
+---
+
+## 七、高频手写与浏览器原理
+
+### 21. 从输入 URL 到页面显示，浏览器发生了什么？
+
+<details>
+<summary>查看答案</summary>
+
+**完整流程：**
+
+```
+1. URL 解析 → 2. DNS 解析 → 3. 建立 TCP 连接 → 4. 发送 HTTP 请求
+→ 5. 服务器处理并返回响应 → 6. 浏览器解析 HTML
+→ 7. 构建 DOM 树 / CSSOM 树 → 8. 合并为渲染树
+→ 9. 布局（Layout） → 10. 绘制（Paint） → 11. 合成（Composite）
+```
+
+**关键步骤说明：**
+
+| 阶段         | 说明                                                     |
+| ------------ | -------------------------------------------------------- |
+| DNS 解析     | 域名 → IP 地址，可能经过 DNS 缓存、递归查询              |
+| TCP 三次握手 | 建立可靠连接，HTTPS 还需 TLS/SSL 握手                    |
+| HTTP 请求    | 发送请求行、请求头，携带 Cookie 等                       |
+| 服务器响应   | 返回状态码、响应头、HTML 文档                            |
+| 解析 HTML    | 遇到 `<link>` 异步加载 CSS，遇到 `<script>` 默认阻塞解析 |
+| 构建渲染树   | DOM + CSSOM，只包含可见节点                              |
+| 布局         | 计算每个节点的几何位置                                   |
+| 绘制         | 将像素渲染到屏幕上                                       |
+
+**面试加分点**：能解释 `script` 标签默认阻塞 HTML 解析，可用 `defer`/`async` 优化；能说出重定向、HSTS、HTTP/2 多路复用等细节会让流程更复杂。
+
+</details>
+
+---
+
+### 22. 浏览器的缓存机制是怎样的？强缓存和协商缓存有什么区别？
+
+<details>
+<summary>查看答案</summary>
+
+**缓存决策流程：**
+
+```
+浏览器请求资源
+  ↓
+是否有缓存？
+  ↓ 是
+判断是否命中强缓存（Cache-Control / Expires）
+  ↓ 命中
+直接使用本地缓存（200 from cache）
+  ↓ 未命中
+发送请求到服务器，携带协商缓存字段
+  ↓
+服务器判断资源是否变化
+  ↓ 未变化
+返回 304，浏览器继续使用本地缓存
+  ↓ 变化
+返回 200 + 新资源
+```
+
+**强缓存：**
+
+| 字段            | 说明                                   |
+| --------------- | -------------------------------------- |
+| `Expires`       | HTTP/1.0，绝对过期时间，受本地时间影响 |
+| `Cache-Control` | HTTP/1.1，相对时间，如 `max-age=3600`  |
+
+```http
+Cache-Control: max-age=31536000, immutable
+```
+
+**协商缓存：**
+
+| 字段                                  | 说明                           |
+| ------------------------------------- | ------------------------------ |
+| `Last-Modified` / `If-Modified-Since` | 基于文件最后修改时间，精度秒级 |
+| `ETag` / `If-None-Match`              | 基于文件内容哈希，更精确       |
+
+**对比：**
+
+| 特性       | 强缓存         | 协商缓存         |
+| ---------- | -------------- | ---------------- |
+| 是否发请求 | 不发           | 发请求           |
+| 状态码     | 200 from cache | 304              |
+| 优先级     | 优先判断       | 强缓存失效后判断 |
+
+**面试加分点**：能说出 `Cache-Control: no-cache` 不是不缓存，而是强制协商缓存；`no-store` 才是真正不缓存。
+
+</details>
+
+---
+
+### 23. 什么是跨域？如何解决跨域问题？
+
+<details>
+<summary>查看答案</summary>
+
+**同源策略：**
+
+协议、域名、端口三者都相同才叫同源。任一不同即产生跨域。
+
+```js
+// 同源
+http://a.com:80/api
+http://a.com:80/page
+
+// 跨域（端口不同）
+http://a.com:80/api
+http://a.com:8080/page
+```
+
+**解决方案：**
+
+| 方案               | 适用场景                                                  |
+| ------------------ | --------------------------------------------------------- |
+| **CORS**           | 服务端设置 `Access-Control-Allow-Origin` 等响应头，最常用 |
+| **Nginx 反向代理** | 开发环境或线上统一入口，把接口代理到同源路径下            |
+| **JSONP**          | 只支持 GET，已逐渐淘汰                                    |
+| **postMessage**    | 不同窗口/iframe 间通信                                    |
+| **WebSocket**      | 不受同源策略限制                                          |
+
+**CORS 简单请求与预检请求：**
+
+```http
+OPTIONS /api/data HTTP/1.1
+Origin: http://a.com
+Access-Control-Request-Method: POST
+Access-Control-Request-Headers: X-Custom-Header
+```
+
+满足以下条件是简单请求：
+
+- 方法为 GET/HEAD/POST
+- Content-Type 为 `application/x-www-form-urlencoded`、`multipart/form-data`、`text/plain`
+- 无自定义请求头
+
+否则浏览器会自动发送 OPTIONS 预检请求。
+
+**面试加分点**：能解释 CORS 是浏览器的安全策略，服务端不校验时 Postman/ curl 能调通但浏览器会拦截；能说出 `withCredentials` 用于携带 Cookie。
+
+</details>
+
+---
+
+### 24. 什么是重排（Reflow）和重绘（Repaint）？如何减少？
+
+<details>
+<summary>查看答案</summary>
+
+**重排（Reflow / Layout）：**
+
+当元素的几何属性（尺寸、位置）发生变化，浏览器需要重新计算布局。
+
+触发属性示例：`width`、`height`、`margin`、`padding`、`top`、`left`、`offsetHeight` 等。
+
+**重绘（Repaint）：**
+
+当元素外观发生变化但不影响布局时，浏览器重新绘制像素。
+
+触发属性示例：`color`、`background-color`、`box-shadow`、`border-radius`、`visibility` 等。
+
+**关系：**
+
+```
+重排一定会引起重绘，重绘不一定会引起重排。
+```
+
+**减少重排重绘的方法：**
+
+1. **批量修改样式**：一次性修改 className，而不是逐条改 style
+2. **使用 `transform` / `opacity`**：触发 GPU 加速，避开重排
+3. **避免频繁读取布局属性**：如 `offsetHeight`、`scrollTop` 会强制同步布局
+4. **使用 `DocumentFragment`**：离线操作 DOM 后再一次性插入
+5. **使用 `will-change`**：提前告知浏览器哪些属性将变化
+6. **虚拟滚动**：只渲染可视区域 DOM
+
+```js
+// ❌ 频繁触发重排
+const el = document.getElementById("box");
+for (let i = 0; i < 100; i++) {
+  el.style.width = el.offsetWidth + 1 + "px"; // 读 + 写交替
+}
+
+// ✅ 批量处理
+const newWidth = el.offsetWidth + 100;
+el.style.width = newWidth + "px";
+```
+
+**面试加分点**：能解释 `offsetHeight`、`getBoundingClientRect()` 等会触发强制同步布局（Forced Synchronous Layout），导致性能急剧下降。
+
+</details>
+
+---
+
+### 25. 手写一个 Promise.all 实现
+
+<details>
+<summary>查看答案</summary>
+
+**核心要求：**
+
+- 接收一个可迭代对象（如数组）
+- 所有 Promise 都成功时返回结果数组
+- 任意一个失败时立即 reject
+- 空数组直接返回空数组的 resolved Promise
+
+```js
+function promiseAll(iterable) {
+  return new Promise((resolve, reject) => {
+    const promises = Array.from(iterable);
+    const result = [];
+    let count = 0;
+
+    if (promises.length === 0) {
+      resolve(result);
+      return;
+    }
+
+    promises.forEach((p, index) => {
+      Promise.resolve(p).then(
+        (value) => {
+          result[index] = value;
+          count++;
+          if (count === promises.length) {
+            resolve(result);
+          }
+        },
+        (reason) => {
+          reject(reason);
+        },
+      );
+    });
+  });
+}
+```
+
+**关键点：**
+
+- 用 `Promise.resolve(p)` 包装非 Promise 值
+- 用 `result[index]` 保证结果顺序与输入一致
+- `count` 计数而不是用 `result.length` 判断，避免稀疏数组问题
+
+**面试加分点**：能手写 `Promise.race` / `Promise.allSettled`；能解释 Promise.all 中一个失败就短路，其他 Promise 仍会执行但结果不再关心。
+
+</details>
+
+---
+
+### 26. 手写一个 new 操作符
+
+<details>
+<summary>查看答案</summary>
+
+**new 操作符做的事：**
+
+1. 创建一个空对象
+2. 空对象的原型指向构造函数的 `prototype`
+3. 执行构造函数，将 this 绑定到这个新对象
+4. 如果构造函数返回对象，则返回该对象；否则返回新对象
+
+```js
+function myNew(Constructor, ...args) {
+  const obj = Object.create(Constructor.prototype);
+  const result = Constructor.apply(obj, args);
+  return result !== null &&
+    (typeof result === "object" || typeof result === "function")
+    ? result
+    : obj;
+}
+
+// 测试
+function Person(name) {
+  this.name = name;
+}
+Person.prototype.say = function () {
+  console.log(this.name);
+};
+
+const p = myNew(Person, "tom");
+p.say(); // "tom"
+```
+
+**面试加分点**：能解释 `Object.create()` 的作用；能说出构造函数返回基本类型时会被忽略，返回对象时才会替代默认实例。
+
+</details>
+
+---
+
+### 27. 手写 call、apply、bind
+
+<details>
+<summary>查看答案</summary>
+
+**myCall：**
+
+```js
+Function.prototype.myCall = function (context, ...args) {
+  context =
+    context === null || context === undefined ? globalThis : Object(context);
+  const key = Symbol("fn");
+  context[key] = this;
+  const result = context[key](...args);
+  delete context[key];
+  return result;
+};
+```
+
+**myApply：**
+
+```js
+Function.prototype.myApply = function (context, args = []) {
+  context =
+    context === null || context === undefined ? globalThis : Object(context);
+  const key = Symbol("fn");
+  context[key] = this;
+  const result = context[key](...args);
+  delete context[key];
+  return result;
+};
+```
+
+**myBind：**
+
+```js
+Function.prototype.myBind = function (context, ...args1) {
+  const fn = this;
+  return function (...args2) {
+    return fn.apply(context, [...args1, ...args2]);
+  };
+};
+```
+
+**bind 作为构造函数使用：**
+
+更完整的 bind 实现还需要支持 `new` 调用：
+
+```js
+Function.prototype.myBind = function (context, ...args1) {
+  const fn = this;
+  function bound(...args2) {
+    return fn.apply(this instanceof bound ? this : context, [
+      ...args1,
+      ...args2,
+    ]);
+  }
+  bound.prototype = Object.create(fn.prototype);
+  return bound;
+};
+```
+
+**面试加分点**：能解释 `bind` 返回的新函数作为构造函数时，this 应指向新实例；能说出 Symbol 键避免覆盖对象原有属性。
+
+</details>
+
+---
+
+### 28. 实现数组扁平化（flat）
+
+<details>
+<summary>查看答案</summary>
+
+**递归实现：**
+
+```js
+function flat(arr, depth = 1) {
+  const result = [];
+  for (const item of arr) {
+    if (Array.isArray(item) && depth > 0) {
+      result.push(...flat(item, depth - 1));
+    } else {
+      result.push(item);
+    }
+  }
+  return result;
+}
+
+flat([1, [2, [3, [4]]]], 2); // [1, 2, 3, [4]]
+```
+
+**reduce 实现：**
+
+```js
+function flat(arr, depth = 1) {
+  return depth > 0
+    ? arr.reduce(
+        (acc, cur) =>
+          acc.concat(Array.isArray(cur) ? flat(cur, depth - 1) : cur),
+        [],
+      )
+    : arr.slice();
+}
+```
+
+**完全拍平（Infinity）：**
+
+```js
+function flatDeep(arr) {
+  return arr.reduce(
+    (acc, cur) => acc.concat(Array.isArray(cur) ? flatDeep(cur) : cur),
+    [],
+  );
+}
+
+// 或用栈
+function flatDeep(arr) {
+  const stack = [...arr];
+  const result = [];
+  while (stack.length) {
+    const next = stack.pop();
+    if (Array.isArray(next)) {
+      stack.push(...next);
+    } else {
+      result.push(next);
+    }
+  }
+  return result.reverse();
+}
+```
+
+**面试加分点**：能手写指定深度的扁平化；能解释 `Array.prototype.flat` 的默认深度是 1；栈实现适合面试展示对数据结构的掌握。
+
+</details>
+
+---
+
+### 29. 实现发布订阅模式（EventEmitter）
+
+<details>
+<summary>查看答案</summary>
+
+**核心 API：**
+
+- `on(event, listener)`：订阅事件
+- `emit(event, ...args)`：发布事件
+- `off(event, listener)`：取消订阅
+- `once(event, listener)`：只订阅一次
+
+```js
+class EventEmitter {
+  constructor() {
+    this.events = {};
+  }
+
+  on(event, listener) {
+    if (!this.events[event]) {
+      this.events[event] = [];
+    }
+    this.events[event].push(listener);
+    return () => this.off(event, listener); // 返回取消订阅函数
+  }
+
+  once(event, listener) {
+    const wrapper = (...args) => {
+      listener(...args);
+      this.off(event, wrapper);
+    };
+    this.on(event, wrapper);
+  }
+
+  emit(event, ...args) {
+    const listeners = this.events[event] || [];
+    listeners.forEach((fn) => fn(...args));
+  }
+
+  off(event, listener) {
+    if (!this.events[event]) return;
+    this.events[event] = this.events[event].filter((fn) => fn !== listener);
+  }
+}
+
+// 使用
+const emitter = new EventEmitter();
+const unsubscribe = emitter.on("data", (msg) => console.log(msg));
+emitter.emit("data", "hello"); // hello
+unsubscribe();
+```
+
+**与观察者模式的区别：**
+
+| 特性     | 发布订阅                 | 观察者模式                         |
+| -------- | ------------------------ | ---------------------------------- |
+| 耦合度   | 低，通过事件中心通信     | 高，Subject 直接通知 Observer      |
+| 通信方式 | 发布者和订阅者不直接认识 | 观察者直接注册到被观察者上         |
+| 典型应用 | EventBus、消息队列       | Vue 2 响应式、DOM MutationObserver |
+
+**面试加分点**：能说出 `once` 用包装函数实现；能解释发布订阅比观察者模式多了一层事件中心，解耦更彻底。
+
+</details>
+
+---
+
+### 30. 前端路由的原理是什么？hash 和 history 模式有什么区别？
+
+<details>
+<summary>查看答案</summary>
+
+**前端路由本质：**
+
+监听 URL 变化，根据 URL 匹配对应的组件或页面，而不刷新整个页面。
+
+**hash 模式：**
+
+- URL 中 `#` 后面的部分变化不会触发页面刷新
+- 通过 `hashchange` 事件监听
+- 兼容性好，包括 IE8+
+
+```js
+window.addEventListener("hashchange", () => {
+  const path = location.hash.slice(1);
+  render(path);
+});
+```
+
+**history 模式：**
+
+- 使用 HTML5 History API：`pushState`、`replaceState`、`popstate`
+- URL 更美观，没有 `#`
+- 需要服务端配置，避免刷新 404
+
+```js
+history.pushState({ path: "/about" }, "", "/about");
+
+window.addEventListener("popstate", () => {
+  render(location.pathname);
+});
+```
+
+**对比：**
+
+| 特性       | hash 模式    | history 模式      |
+| ---------- | ------------ | ----------------- |
+| URL 形式   | `/#/about`   | `/about`          |
+| 兼容性     | 好，IE8+     | IE10+             |
+| 服务端支持 | 不需要       | 需要配置 fallback |
+| SEO        | 一般         | 更好              |
+| 监听事件   | `hashchange` | `popstate`        |
+
+**面试加分点**：能解释 `pushState` 不会触发 `popstate`，只有浏览器前进后退/手动改 URL 才会触发；能说出 Nginx/Node 服务端需要返回 `index.html` 来支持 history 模式刷新。
 
 </details>
 
