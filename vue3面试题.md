@@ -1,6 +1,6 @@
 # Vue 3 面试题（含隐藏答案 · 详细版）
 
-共 **25 题**，涵盖基础、响应式、Composition API、组件通信、Router、Pinia、进阶特性与补充重点。点击「查看答案」即可展开，答案以**口述要点 / 对比 / 核心原理 / 坑点 / 面试加分点**为主，代码已精简，适合面试直接回答。
+共 **30 题**，涵盖基础、响应式、Composition API、组件通信、Router、Pinia、进阶特性、Diff 算法、新版本特性与高阶 API。点击「查看答案」即可展开，答案以**口述要点 / 对比 / 核心原理 / 坑点 / 面试加分点**为主，代码已精简，适合面试直接回答。
 
 ---
 
@@ -845,6 +845,233 @@ Vue 3 新增内置组件，在异步依赖（异步组件、顶层 `await` 的 `
 - 异步组件首次加载后也会被缓存
 
 **面试加分点**：能说出 KeepAlive 适合 tab 切换、表单填写一半切换等场景；能解释 `include`/`exclude` 匹配组件的 `name` 选项。
+
+</details>
+
+---
+
+---
+
+## 九、高频进阶面试题
+
+### 26. Vue 3 的 Diff 算法原理？与 Vue 2 有什么区别？
+
+<details>
+<summary>查看答案</summary>
+
+**一句话概括：** Vue 3 采用「快速 Diff」算法，在双端对比基础上引入最长递增子序列（LIS）处理乱序节点，配合编译期 PatchFlag 跳过静态节点，diff 效率大幅提升。
+
+**Diff 流程五步走：**
+
+1. **同序列头部对比**：从左端开始，相同类型 + key 的节点直接 patch，指针后移
+2. **同序列尾部对比**：从右端开始，相同的 patch，指针前移
+3. **仅新增节点**：旧序列已遍历完，新序列有剩余 → 直接挂载
+4. **仅删除节点**：新序列已遍历完，旧序列有剩余 → 直接卸载
+5. **乱序部分（核心）**：建立新序列 key → index 的映射表，求出最长递增子序列（LIS），属于 LIS 的节点不动，其余移动/新建/删除
+
+**与 Vue 2 Diff 的对比：**
+
+| 维度     | Vue 2                                  | Vue 3                        |
+| -------- | -------------------------------------- | ---------------------------- |
+| 算法     | 双端交叉对比（头头、尾尾、头尾、尾头） | 双端同序列 + LIS 处理乱序    |
+| 静态节点 | 全量 diff                              | PatchFlag 标记，跳过静态节点 |
+| 树结构   | 递归遍历整棵树                         | Block Tree 拍平动态节点      |
+| 移动策略 | 逻辑简单，移动次数可能多               | LIS 保证最少移动             |
+| 编译优化 | 无                                     | 静态提升 + PatchFlag + Block |
+
+**PatchFlag 的作用：**
+
+编译器在生成 VNode 时给动态节点打上标记位（如 TEXT=1、CLASS=2、STYLE=4、PROPS=8），运行时 diff 时只比较标记对应的动态部分，而非所有 props。
+
+**Block Tree 机制：**
+
+模板编译时把动态节点收集到最近的 Block（根节点、v-if、v-for 都会创建 Block）的 `dynamicChildren` 数组里，diff 时直接遍历这个扁平数组，不用递归整棵树。
+
+**坑点：**
+
+- v-for 不加 key 或用 index 作 key，会退化为就地 patch，导致状态混乱
+- 动态 key 变化会导致节点无法复用，全量重建
+- v-if / v-for 嵌套会产生新 Block，影响 Block Tree 拍平效果
+
+**面试加分点：** 能说出「最长递增子序列」的作用是找出不需要移动的最大节点集合，剩余节点才做 DOM 移动，从而保证 DOM 操作最少。能区分「编译期优化」和「运行时 Diff」是两个独立层级的优化。
+
+</details>
+
+---
+
+### 27. Vue 3 组件通信方式有哪几种？各适用什么场景？
+
+<details>
+<summary>查看答案</summary>
+
+**通信方式总表：**
+
+| 方式                 | 方向              | 适用场景                           | 备注                               |
+| -------------------- | ----------------- | ---------------------------------- | ---------------------------------- |
+| `props` / `emit`     | 父 → 子 / 子 → 父 | 父子之间常规数据流                 | 最基本、最推荐                     |
+| `v-model`            | 双向              | 表单组件双向绑定                   | 本质是 props + emit 语法糖         |
+| `provide` / `inject` | 祖先 → 后代       | 跨层级（主题、国际化、表单上下文） | 避免 prop drilling                 |
+| `Pinia`              | 任意组件          | 全局/跨页面共享状态                | 官方推荐状态管理                   |
+| `$attrs`             | 父 → 子(透传)     | 二次封装组件透传属性               | 配合 `inheritAttrs: false`         |
+| `expose` / `ref`     | 父 → 子(命令式)   | 父组件主动调用子组件方法           | `<script setup>` 需 `defineExpose` |
+| `mitt`（第三方）     | 任意组件          | 兄弟/跨层级事件通知                | Vue 3 移除了 `$on/$off`            |
+| `作用域插槽`         | 子 → 父(渲染)     | 子组件向父组件暴露数据用于渲染     | 如表格组件自定义列                 |
+
+**选择原则（从简单到复杂）：**
+
+1. 父子 → props / emit / v-model
+2. 跨层级（同一组件树）→ provide / inject
+3. 全局跨页面 → Pinia
+4. 偶发事件通知 → mitt
+5. 命令式调用 → expose + ref
+
+**与 Vue 2 的变化：**
+
+| Vue 2                    | Vue 3                      |
+| ------------------------ | -------------------------- |
+| `$on` / `$off` / `$once` | 移除，用 mitt 替代         |
+| `.sync` 修饰符           | 合并到 `v-model:xxx`       |
+| `$children`              | 移除，用 ref 替代          |
+| `$listeners`             | 合并到 `$attrs`            |
+| EventBus                 | 不再推荐，用 Pinia 或 mitt |
+
+**坑点：**
+
+- `provide` 普通值无响应式，必须 provide ref/reactive
+- `expose` 在 `<script setup>` 中默认什么都不暴露，必须显式声明
+- mitt 要在 `onUnmounted` 中 `off`，否则内存泄漏
+
+**面试加分点：** 能根据“谁和谁通信” + “数据流方向”快速给出方案；能解释 Vue 3 移除 `$on/$listeners` 的原因是为了让数据流更可追踪，避免隐式耦合。
+
+</details>
+
+---
+
+### 28. Vue 3.3–3.5 带来了哪些重要新特性？
+
+<details>
+<summary>查看答案</summary>
+
+**按版本整理：**
+
+| 版本 | 重要特性                              | 一句话说明                                                                        |
+| ---- | ------------------------------------- | --------------------------------------------------------------------------------- |
+| 3.3  | `defineOptions`                       | 在 `<script setup>` 中声明组件 name、inheritAttrs 等选项，不再需要额外 `<script>` |
+| 3.3  | `defineSlots`                         | 为插槽提供 TS 类型声明                                                            |
+| 3.3  | 泛型组件 `<script setup generic="T">` | 组件 props/emit/slots 可用泛型，适合通用组件库                                    |
+| 3.3  | `defineEmits` 元组语法                | 更简洁的类型声明：`{ change: [id: number] }`                                      |
+| 3.4  | `defineModel`                         | 一行实现双向绑定，返回 ref，读写自动 emit                                         |
+| 3.4  | `v-bind` 同名简写                     | `:id` 等价于 `:id="id"`（类似 JS 对象简写）                                       |
+| 3.4  | `watch` 的 `once` 选项                | 只触发一次就自动停止                                                              |
+| 3.5  | Reactive Props Destructure            | `const { count = 0 } = defineProps<{ count?: number }>()` 解构后仍保持响应式      |
+| 3.5  | `useTemplateRef`                      | 显式获取模板 ref，解决变量名和 ref 属性同名的混淆                                 |
+| 3.5  | `useId`                               | 生成唯一 ID，SSR/CSR 一致，解决 aria 关联和 hydration 问题                        |
+| 3.5  | Deferred Teleport                     | `<Teleport defer>` 延迟到同次更新周期末尾再传送，解决目标元素未渲染问题           |
+| 3.5  | `onWatcherCleanup`                    | watch/watchEffect 副作用清理函数，类似 React useEffect 返回值                     |
+
+**对日常开发影响最大的三个：**
+
+1. **defineModel**：把之前 5-8 行的双向绑定样板代码缩减为 1 行
+2. **Reactive Props Destructure**：解决了「解构 props 丢响应式」这个 Vue 3 从诹生就存在的坑
+3. **defineOptions**：不再需要为了一个 `name` 属性写两个 script 块
+
+**坑点：**
+
+- Reactive Props Destructure 仅在 3.5+ 生效，旧版本解构仍丢响应式
+- `defineModel` 返回的 ref 不能解构出属性，必须整体使用 `.value`
+- 泛型组件的类型参数不能从外部 import（3.3 限制，后续版本已放开）
+
+**面试加分点：** 能跟进最新版本特性说明你在持续关注 Vue 生态；能解释 defineModel 内部本质是编译宏展开为 `modelValue` prop + `update:modelValue` emit + 一个 ref 同步层。
+
+</details>
+
+---
+
+### 29. `effectScope` 是什么？解决什么问题？
+
+<details>
+<summary>查看答案</summary>
+
+**一句话概括：** `effectScope` 是一个“副作用容器”，可以批量收集并统一销毁内部所有响应式副作用（computed、watch、watchEffect）。
+
+**解决的问题：**
+
+在组件外（如全局 store、测试、库开发）创建的 computed/watch 不会自动在组件卸载时清理，导致内存泄漏。`effectScope` 提供了一个统一的生命周期边界。
+
+**核心 API：**
+
+| API                  | 作用                                         |
+| -------------------- | -------------------------------------------- |
+| `effectScope()`      | 创建 scope 实例                              |
+| `scope.run(fn)`      | 在 scope 内执行 fn，内部的 effect 被自动收集 |
+| `scope.stop()`       | 停止 scope 内所有 effect                     |
+| `getCurrentScope()`  | 获取当前活动的 scope                         |
+| `onScopeDispose(fn)` | 在当前 scope 被停止时执行清理回调            |
+
+**使用场景：**
+
+1. **Pinia store 内部**：每个 store 自动拥有一个 scope，`$dispose()` 时统一清理
+2. **Composable 库开发**：封装可销毁的功能模块，调用方一句 `stop()` 即可释放全部资源
+3. **单元测试**：每个测试用例创建独立 scope，beforeEach 中 stop 上一个
+4. **非组件的全局状态**：手动管理生命周期
+5. **嵌套 scope**：父 scope stop 会级联停止子 scope，`detached: true` 可分离
+
+**与组件的关系：**
+
+每个组件实例内部自动创建了一个 effectScope，组件卸载时自动 stop，所以组件内的 computed/watch 不用手动清理。`effectScope` 主要是给「组件外」场景用的。
+
+**坑点：**
+
+- `scope.run()` 返回 fn 的返回值，忽略返回值会丢失 computed 的 ref 引用
+- `onScopeDispose` 必须在 scope 活动期间调用，否则报警
+- detached scope 不会被父 scope 级联清理，必须手动 stop
+
+**面试加分点：** 能说出「Pinia 每个 store 就是一个 effectScope」；能解释「组件内不需要手动用 effectScope，因为组件本身就是一个 scope」。
+
+</details>
+
+---
+
+### 30. 什么场景下需要用 render 函数 / `h()` 而不是模板？
+
+<details>
+<summary>查看答案</summary>
+
+**核心区别：**
+
+| 维度     | 模板（Template）            | render 函数 / `h()`       |
+| -------- | --------------------------- | ------------------------- |
+| 可读性   | 更直观，类 HTML             | 纯 JS，灵活但冷门         |
+| 编译优化 | 可享受 PatchFlag/Block Tree | 无编译优化，跑时全量 diff |
+| 动态能力 | 受限于模板语法              | 完全 JS 表达能力          |
+| TS 支持  | 一般                        | 更好（纯 TS 上下文）      |
+| JSX      | 不支持                      | 可用 JSX/TSX              |
+
+**适合用 render 函数的场景：**
+
+1. **高度动态的组件**：根据 props 动态决定渲染哪个标签 / 组件（如通用 Button 组件根据 `tag` prop 渲染 a / button / router-link）
+2. **组件库开发**：封装底层组件（如 Element Plus 的表单 renderer）
+3. **递归组件**：树形结构渲染，模板递归不直观
+4. **程序化生成 VNode**：根据配置 JSON 动态生成表单/页面
+5. **函数式组件**：简单包装组件，无状态
+6. **插槽处理复杂**：需要对 slots 做过滤、包装、克隆等操作
+
+**h() 函数参数：** `h(type, props?, children?)` —— type 可以是字符串标签、组件对象、Fragment/Teleport/Suspense；children 可以是字符串、数组、插槽函数对象。
+
+**与模板的配合使用：**
+
+- 大部分业务组件用模板（享受编译优化）
+- 底层/通用组件用 render（享受灵活性）
+- 可在模板组件中定义局部 render 组件（通过 `defineComponent` + render）
+
+**坑点：**
+
+- render 函数无法享受模板编译优化（PatchFlag/静态提升），性能略低
+- JSX 需额外配置插件（`@vitejs/plugin-vue-jsx`）
+- `h()` 的事件写法是 `onClick`（camelCase），不是 `@click`
+- render 函数中不能使用 `v-model`、`v-show` 等指令，需手动实现
+
+**面试加分点：** 能说清「模板最终也被编译为 render 函数，两者本质相同」；能解释「业务组件优先模板，底层组件优先 render」的选择逻辑；知道 Vue 3 的 `createRenderer` 可创建自定义渲染器（如渲染到 Canvas/终端）。
 
 </details>
 
